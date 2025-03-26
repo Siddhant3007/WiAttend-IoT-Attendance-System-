@@ -1,0 +1,58 @@
+function fetchAttendanceData() {
+  var firebaseUrl = "https://Your_firebase_url"; // Replace with your Firebase URL
+  var response = UrlFetchApp.fetch(firebaseUrl);
+  var data = JSON.parse(response.getContentText());
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var existingData = sheet.getDataRange().getValues(); // Get existing data
+  var existingKeys = new Set(existingData.map(row => row[0])); // Store existing Firebase keys
+
+  if (!data) {
+    Logger.log("No data found in Firebase!");
+    return;
+  }
+
+  var newRows = [];
+  var now = new Date(); // Get current date and time
+
+  for (var key in data) {
+    if (!existingKeys.has(key)) { // Check if entry is new
+      var rawString = data[key]; // Example: "Roll no.: 6, Name: John"
+
+      if (typeof rawString === "string" && rawString.includes("Roll no.:")) {
+        var rollNoMatch = rawString.match(/Roll no\.: (\d+)/);
+        var nameMatch = rawString.match(/Name:\s*(.*)/);
+
+        var rollNo = rollNoMatch ? rollNoMatch[1] : "Unknown";
+        var name = nameMatch ? nameMatch[1].trim() : "Unknown";
+
+        // Fetch name from Firebase if stored in /students/{roll_no}
+        var studentName = getStudentNameFromFirebase(rollNo);
+        if (studentName !== "Unknown") {
+          name = studentName; // Override name if found in Firebase
+        }
+
+        var date = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd");
+        var time = Utilities.formatDate(now, Session.getScriptTimeZone(), "HH:mm:ss");
+
+        newRows.push([key, rollNo, name, date, time]);
+      }
+    }
+  }
+
+  if (newRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
+    Logger.log("New attendance records added with timestamp.");
+  } else {
+    Logger.log("No new records found.");
+  }
+}
+
+// Function to get student name from Firebase /students/{roll_no}
+function getStudentNameFromFirebase(rollNo) {
+  var firebaseStudentUrl = "your_firebase_URL/" + rollNo + ".json";
+  var response = UrlFetchApp.fetch(firebaseStudentUrl);
+  var studentName = response.getContentText();
+
+  return studentName !== "null" ? studentName.replace(/"/g, '') : "Unknown";
+}
